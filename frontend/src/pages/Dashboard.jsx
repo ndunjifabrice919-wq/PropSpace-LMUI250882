@@ -1,224 +1,436 @@
 import { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import PropertyCard from '../components/PropertyCard';
+import Modal from '../components/Modal';
+import LoadingSpinner from '../components/LoadingSpinner';
+
+const API_BASE = 'http://localhost:5000/api';
+
+const EMPTY_PROPERTY = {
+  title: '', description: '', price: '', city: '', country: '',
+  propertyType: 'Apartment', listingStatus: 'Sale', bedrooms: 1, imageUrls: '',
+};
+
+const EMPTY_PROFILE = { displayName: '', phone: '', avatar: '', bio: '' };
+const EMPTY_SECURITY = { currentPassword: '', newPassword: '', confirmNewPassword: '' };
 
 export default function Dashboard() {
-  const { user, token, fetchProfile } = useContext(AuthContext);
-  const navigate = useNavigate();
-  const [myProperties, setMyProperties] = useState([]);
-  
-  // Modals state
-  const [showPropertyModal, setShowPropertyModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [currentPropertyId, setCurrentPropertyId] = useState(null);
-  
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const { user, refreshProfile } = useContext(AuthContext);
 
-  // Forms data
-  const [propertyData, setPropertyData] = useState({ title: '', description: '', price: '', city: '', country: '', propertyType: 'Apartment' });
-  const [profileData, setProfileData] = useState({ name: '', phone: '', avatar: '' });
-  const [securityData, setSecurityData] = useState({ oldPassword: '', newPassword: '' });
+  const [myListings, setMyListings] = useState([]);
+  const [listingsLoading, setListingsLoading] = useState(true);
+  const [listingsError, setListingsError] = useState('');
 
-  const fetchProperties = () => {
-    axios.get('http://localhost:5000/api/properties/my-listings')
-      .then(res => setMyProperties(res.data))
-      .catch(err => console.error(err));
+  // Modal visibility
+  const [activeModal, setActiveModal] = useState(null); // 'create' | 'edit' | 'profile' | 'security'
+  const [editingId, setEditingId] = useState(null);
+
+  // Form data
+  const [propertyForm, setPropertyForm] = useState(EMPTY_PROPERTY);
+  const [profileForm, setProfileForm] = useState(EMPTY_PROFILE);
+  const [securityForm, setSecurityForm] = useState(EMPTY_SECURITY);
+
+  // Form feedback
+  const [formError, setFormError] = useState('');
+  const [formSuccess, setFormSuccess] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  // ── Fetch my listings ──────────────────────────────────────────────────────
+  const fetchMyListings = async () => {
+    setListingsLoading(true);
+    setListingsError('');
+    try {
+      const res = await axios.get(`${API_BASE}/properties/my-listings`);
+      setMyListings(res.data);
+    } catch (err) {
+      setListingsError(err.response?.data?.message || 'Failed to load your listings.');
+    } finally {
+      setListingsLoading(false);
+    }
   };
 
+  // Run exactly once on mount
   useEffect(() => {
-    if (!token) {
-      navigate('/login');
-      return;
-    }
-    fetchProperties();
-  }, [token, navigate]);
+    fetchMyListings();
+    // No subscriptions to clean up here
+  }, []);
 
+  // Sync profile form when user context loads
   useEffect(() => {
     if (user) {
-      setProfileData({ name: user.name || '', phone: user.phone || '', avatar: user.avatar || '' });
+      setProfileForm({
+        displayName: user.displayName || '',
+        phone: user.phone || '',
+        avatar: user.avatar || '',
+        bio: user.bio || '',
+      });
     }
   }, [user]);
 
-  // --- PROPERTY CRUD ---
-  const handleDelete = async (id) => {
-    if(window.confirm('Are you sure you want to delete this listing?')) {
-      try {
-        await axios.delete(`http://localhost:5000/api/properties/${id}`);
-        fetchProperties();
-      } catch (err) {
-        alert('Failed to delete property');
-      }
-    }
+  // ── Helpers ────────────────────────────────────────────────────────────────
+  const closeModal = () => {
+    setActiveModal(null);
+    setEditingId(null);
+    setFormError('');
+    setFormSuccess('');
   };
 
+  const setProp = (field) => (e) =>
+    setPropertyForm((prev) => ({ ...prev, [field]: e.target.value }));
+
+  // ── Property CRUD ──────────────────────────────────────────────────────────
   const openCreateModal = () => {
-    setIsEditing(false);
-    setPropertyData({ title: '', description: '', price: '', city: '', country: '', propertyType: 'Apartment' });
-    setShowPropertyModal(true);
+    setPropertyForm(EMPTY_PROPERTY);
+    setActiveModal('create');
   };
 
-  const openEditModal = (property) => {
-    setIsEditing(true);
-    setCurrentPropertyId(property._id);
-    setPropertyData({
-      title: property.title, description: property.description, price: property.price,
-      city: property.city, country: property.country, propertyType: property.propertyType
+  const openEditModal = (listing) => {
+    setPropertyForm({
+      title: listing.title,
+      description: listing.description,
+      price: listing.price,
+      city: listing.city,
+      country: listing.country,
+      propertyType: listing.propertyType,
+      listingStatus: listing.listingStatus,
+      bedrooms: listing.bedrooms ?? 1,
+      imageUrls: (listing.imageUrls || []).join(', '),
     });
-    setShowPropertyModal(true);
+    setEditingId(listing._id);
+    setActiveModal('edit');
   };
 
   const handlePropertySubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
+
+    const { title, description, price, city, country, propertyType, listingStatus } = propertyForm;
+    if (!title || !description || !price || !city || !country || !propertyType || !listingStatus) {
+      setFormError('Please fill in all required fields.');
+      return;
+    }
+    if (Number(price) <= 0) {
+      setFormError('Price must be a positive number.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      if (isEditing) {
-        await axios.put(`http://localhost:5000/api/properties/${currentPropertyId}`, propertyData);
+      const payload = {
+        ...propertyForm,
+        price: Number(propertyForm.price),
+        bedrooms: Number(propertyForm.bedrooms) || 1,
+        imageUrls: propertyForm.imageUrls
+          ? propertyForm.imageUrls.split(',').map((u) => u.trim()).filter(Boolean)
+          : [],
+      };
+
+      if (activeModal === 'edit') {
+        await axios.put(`${API_BASE}/properties/${editingId}`, payload);
       } else {
-        await axios.post('http://localhost:5000/api/properties', propertyData);
+        await axios.post(`${API_BASE}/properties`, payload);
       }
-      setShowPropertyModal(false);
-      fetchProperties();
+      closeModal();
+      fetchMyListings();
     } catch (err) {
-      alert('Failed to save property');
+      setFormError(err.response?.data?.message || 'Failed to save listing. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  // --- PROFILE & SECURITY ---
+  const handleDelete = async (id) => {
+    if (!window.confirm('Permanently remove this listing?')) return;
+    try {
+      await axios.delete(`${API_BASE}/properties/${id}`);
+      fetchMyListings();
+    } catch {
+      alert('Could not delete the listing. Please try again.');
+    }
+  };
+
+  // ── Profile & Security ─────────────────────────────────────────────────────
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
+    setFormSuccess('');
+    setSubmitting(true);
     try {
-      await axios.put('http://localhost:5000/api/users/profile', profileData);
-      fetchProfile(); // Refresh context
-      setShowProfileModal(false);
-      alert('Profile updated successfully!');
+      await axios.put(`${API_BASE}/users/profile`, profileForm);
+      await refreshProfile();
+      setFormSuccess('Profile updated successfully!');
     } catch (err) {
-      alert('Failed to update profile');
+      setFormError(err.response?.data?.message || 'Profile update failed.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleSecuritySubmit = async (e) => {
     e.preventDefault();
+    setFormError('');
+    setFormSuccess('');
+
+    const { currentPassword, newPassword, confirmNewPassword } = securityForm;
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      setFormError('All password fields are required.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setFormError('New password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setFormError('New passwords do not match.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      await axios.put('http://localhost:5000/api/users/security', securityData);
-      setShowSecurityModal(false);
-      setSecurityData({ oldPassword: '', newPassword: '' });
-      alert('Password updated successfully!');
+      await axios.put(`${API_BASE}/users/security`, { currentPassword, newPassword });
+      setSecurityForm(EMPTY_SECURITY);
+      setFormSuccess('Password changed successfully!');
     } catch (err) {
-      alert(err.response?.data?.error || 'Failed to update password');
+      setFormError(err.response?.data?.message || 'Failed to update password.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  if (!user) return <div className="text-center mt-4">Loading Dashboard...</div>;
+  if (!user) return <LoadingSpinner label="Loading dashboard..." />;
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="container">
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem'}}>
-        <div style={{display: 'flex', alignItems: 'center', gap: '1rem'}}>
+
+      {/* Dashboard Header */}
+      <div className="dashboard-header">
+        <div className="dashboard-user-info">
           {user.avatar ? (
-            <img src={user.avatar} alt="Avatar" style={{width: 60, height: 60, borderRadius: '50%', objectFit: 'cover'}} />
+            <img className="user-avatar-lg" src={user.avatar} alt="avatar" />
           ) : (
-            <div style={{width: 60, height: 60, borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold'}}>{user.username[0].toUpperCase()}</div>
+            <div className="user-avatar-initials">
+              {(user.username || 'U')[0].toUpperCase()}
+            </div>
           )}
           <div>
-            <h1 style={{fontSize: '2rem'}}>Dashboard</h1>
-            <p style={{color: 'var(--text-muted)'}}>Welcome, {user.name || user.username}</p>
+            <h1 className="page-title">My Dashboard</h1>
+            <p className="text-muted">
+              Welcome back, <strong>{user.displayName || user.username}</strong>
+            </p>
+            {user.bio && <p className="text-muted" style={{ fontSize: '0.85rem', marginTop: '0.25rem' }}>{user.bio}</p>}
           </div>
         </div>
-        <div style={{display: 'flex', gap: '1rem'}}>
-          <button className="btn" style={{border: '1px solid var(--border)', color: 'var(--text)'}} onClick={() => setShowProfileModal(true)}>Profile Settings</button>
-          <button className="btn" style={{border: '1px solid var(--border)', color: 'var(--text)'}} onClick={() => setShowSecurityModal(true)}>Change Password</button>
-          <button className="btn btn-primary" onClick={openCreateModal}>+ Add New Listing</button>
+        <div className="dashboard-actions">
+          <button id="btn-open-profile" className="btn btn-ghost btn-sm" onClick={() => setActiveModal('profile')}>
+            ✏️ Edit Profile
+          </button>
+          <button id="btn-open-security" className="btn btn-ghost btn-sm" onClick={() => setActiveModal('security')}>
+            🔒 Change Password
+          </button>
+          <button id="btn-open-create" className="btn btn-primary" onClick={openCreateModal}>
+            + New Listing
+          </button>
         </div>
       </div>
 
-      {/* Profile Modal */}
-      {showProfileModal && (
-        <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000}}>
-          <div className="form-card" style={{margin: 0, width: '100%', maxWidth: '400px'}}>
-            <h2 className="mb-4">Update Profile</h2>
-            <form onSubmit={handleProfileSubmit}>
-              <div className="form-group"><label>Full Name</label><input className="form-control" value={profileData.name} onChange={e=>setProfileData({...profileData, name: e.target.value})} /></div>
-              <div className="form-group"><label>Phone Number</label><input className="form-control" value={profileData.phone} onChange={e=>setProfileData({...profileData, phone: e.target.value})} /></div>
-              <div className="form-group"><label>Avatar URL</label><input className="form-control" value={profileData.avatar} onChange={e=>setProfileData({...profileData, avatar: e.target.value})} /></div>
-              <div style={{display: 'flex', gap: '1rem', marginTop: '1rem'}}>
-                <button type="button" className="btn" style={{flex: 1, border: '1px solid var(--border)', color: 'white'}} onClick={() => setShowProfileModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" style={{flex: 1}}>Save</button>
-              </div>
-            </form>
-          </div>
+      {/* My Listings */}
+      <h2 className="section-title">
+        🏘️ My Listings
+        <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          ({myListings.length})
+        </span>
+      </h2>
+
+      {listingsLoading && <LoadingSpinner label="Loading your listings..." />}
+
+      {!listingsLoading && listingsError && (
+        <div className="error-state" role="alert">
+          ⚠️ {listingsError}
+          <button className="btn btn-outline btn-sm mt-2" onClick={fetchMyListings}>Retry</button>
         </div>
       )}
 
-      {/* Security Modal */}
-      {showSecurityModal && (
-        <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000}}>
-          <div className="form-card" style={{margin: 0, width: '100%', maxWidth: '400px'}}>
-            <h2 className="mb-4">Change Password</h2>
-            <form onSubmit={handleSecuritySubmit}>
-              <div className="form-group"><label>Old Password</label><input type="password" className="form-control" value={securityData.oldPassword} onChange={e=>setSecurityData({...securityData, oldPassword: e.target.value})} required/></div>
-              <div className="form-group"><label>New Password</label><input type="password" className="form-control" value={securityData.newPassword} onChange={e=>setSecurityData({...securityData, newPassword: e.target.value})} required/></div>
-              <div style={{display: 'flex', gap: '1rem', marginTop: '1rem'}}>
-                <button type="button" className="btn" style={{flex: 1, border: '1px solid var(--border)', color: 'white'}} onClick={() => setShowSecurityModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-danger" style={{flex: 1}}>Update Password</button>
-              </div>
-            </form>
-          </div>
+      {!listingsLoading && !listingsError && myListings.length === 0 && (
+        <div className="empty-state">
+          <span className="empty-state-icon">📋</span>
+          <h3>No listings yet</h3>
+          <p>Click <strong>+ New Listing</strong> to post your first property.</p>
         </div>
       )}
 
-      {/* Property Modal */}
-      {showPropertyModal && (
-        <div style={{position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000}}>
-          <div className="form-card" style={{margin: 0, width: '100%', maxHeight: '90vh', overflowY: 'auto'}}>
-            <h2 className="mb-4">{isEditing ? 'Edit Listing' : 'Create New Listing'}</h2>
-            <form onSubmit={handlePropertySubmit}>
-              <div className="form-group"><label>Title</label><input className="form-control" value={propertyData.title} onChange={e=>setPropertyData({...propertyData, title: e.target.value})} required/></div>
-              <div className="form-group"><label>Description</label><textarea className="form-control" value={propertyData.description} onChange={e=>setPropertyData({...propertyData, description: e.target.value})} required/></div>
-              <div style={{display: 'flex', gap: '1rem'}}>
-                <div className="form-group" style={{flex: 1}}><label>Price</label><input type="number" className="form-control" value={propertyData.price} onChange={e=>setPropertyData({...propertyData, price: e.target.value})} required/></div>
-                <div className="form-group" style={{flex: 1}}><label>Type</label>
-                  <select className="form-control" value={propertyData.propertyType} onChange={e=>setPropertyData({...propertyData, propertyType: e.target.value})}>
-                    <option>Apartment</option><option>House</option><option>Studio</option>
-                  </select>
-                </div>
-              </div>
-              <div style={{display: 'flex', gap: '1rem'}}>
-                <div className="form-group" style={{flex: 1}}><label>City</label><input className="form-control" value={propertyData.city} onChange={e=>setPropertyData({...propertyData, city: e.target.value})} required/></div>
-                <div className="form-group" style={{flex: 1}}><label>Country</label><input className="form-control" value={propertyData.country} onChange={e=>setPropertyData({...propertyData, country: e.target.value})} required/></div>
-              </div>
-              <div style={{display: 'flex', gap: '1rem', marginTop: '1rem'}}>
-                <button type="button" className="btn" style={{flex: 1, border: '1px solid var(--border)', color: 'white'}} onClick={() => setShowPropertyModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary" style={{flex: 1}}>{isEditing ? 'Save Changes' : 'Submit Listing'}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Property Grid */}
-      {myProperties.length === 0 ? (
-        <div className="form-card text-center" style={{marginTop: '2rem'}}>
-          <p>You haven't listed any properties yet.</p>
-        </div>
-      ) : (
+      {!listingsLoading && !listingsError && myListings.length > 0 && (
         <div className="property-grid">
-          {myProperties.map(p => (
-            <div key={p._id} className="property-card">
-              <div className="property-image" style={{backgroundImage: `url(${p.imageUrls?.[0] || 'https://via.placeholder.com/400x300?text=No+Image'})`}}></div>
-              <div className="property-content">
-                <div className="property-price">${p.price.toLocaleString()}</div>
-                <h3 className="property-title">{p.title}</h3>
-                <p className="property-location">{p.city}, {p.country}</p>
-                <span style={{background: 'var(--primary)', padding: '0.2rem 0.6rem', borderRadius: '4px', fontSize: '0.8rem'}}>{p.propertyType}</span>
-              </div>
-              <div className="property-actions">
-                <button className="btn" style={{flex: 1, border: '1px solid var(--border)', color: 'white'}} onClick={() => openEditModal(p)}>Edit</button>
-                <button className="btn btn-danger" style={{flex: 1}} onClick={() => handleDelete(p._id)}>Delete</button>
-              </div>
-            </div>
+          {myListings.map((listing) => (
+            <PropertyCard
+              key={listing._id}
+              property={{ ...listing, owner: user }}
+              actions={
+                <>
+                  <button
+                    id={`btn-edit-${listing._id}`}
+                    className="btn btn-ghost btn-sm w-full"
+                    onClick={() => openEditModal(listing)}
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button
+                    id={`btn-delete-${listing._id}`}
+                    className="btn btn-danger btn-sm w-full"
+                    onClick={() => handleDelete(listing._id)}
+                  >
+                    🗑️ Delete
+                  </button>
+                </>
+              }
+            />
           ))}
         </div>
+      )}
+
+      {/* ── Profile Modal ── */}
+      {activeModal === 'profile' && (
+        <Modal title="Edit Profile" onClose={closeModal}>
+          {formError && <div className="form-error">{formError}</div>}
+          {formSuccess && <div className="form-success">{formSuccess}</div>}
+          <form onSubmit={handleProfileSubmit}>
+            <div className="form-group">
+              <label htmlFor="profile-displayname">Display Name</label>
+              <input id="profile-displayname" className="form-control" value={profileForm.displayName}
+                onChange={(e) => setProfileForm({ ...profileForm, displayName: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label htmlFor="profile-phone">Phone Number</label>
+              <input id="profile-phone" className="form-control" value={profileForm.phone}
+                onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label htmlFor="profile-avatar">Avatar URL</label>
+              <input id="profile-avatar" className="form-control" placeholder="https://..." value={profileForm.avatar}
+                onChange={(e) => setProfileForm({ ...profileForm, avatar: e.target.value })} />
+            </div>
+            <div className="form-group">
+              <label htmlFor="profile-bio">Short Bio</label>
+              <textarea id="profile-bio" className="form-control" rows={2} maxLength={300} value={profileForm.bio}
+                onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })}
+                placeholder="Tell others a bit about yourself..." />
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-outline" onClick={closeModal} style={{ flex: 1 }}>Cancel</button>
+              <button id="btn-save-profile" type="submit" className="btn btn-primary" disabled={submitting} style={{ flex: 1 }}>
+                {submitting ? 'Saving...' : 'Save Profile'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Security Modal ── */}
+      {activeModal === 'security' && (
+        <Modal title="Change Password" onClose={closeModal}>
+          {formError && <div className="form-error">{formError}</div>}
+          {formSuccess && <div className="form-success">{formSuccess}</div>}
+          <form onSubmit={handleSecuritySubmit}>
+            <div className="form-group">
+              <label htmlFor="sec-current">Current Password</label>
+              <input id="sec-current" type="password" className="form-control"
+                value={securityForm.currentPassword}
+                onChange={(e) => setSecurityForm({ ...securityForm, currentPassword: e.target.value })} required />
+            </div>
+            <div className="form-group">
+              <label htmlFor="sec-new">New Password</label>
+              <input id="sec-new" type="password" className="form-control" placeholder="Min. 6 characters"
+                value={securityForm.newPassword}
+                onChange={(e) => setSecurityForm({ ...securityForm, newPassword: e.target.value })} required />
+            </div>
+            <div className="form-group">
+              <label htmlFor="sec-confirm">Confirm New Password</label>
+              <input id="sec-confirm" type="password" className="form-control"
+                value={securityForm.confirmNewPassword}
+                onChange={(e) => setSecurityForm({ ...securityForm, confirmNewPassword: e.target.value })} required />
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-outline" onClick={closeModal} style={{ flex: 1 }}>Cancel</button>
+              <button id="btn-save-password" type="submit" className="btn btn-danger" disabled={submitting} style={{ flex: 1 }}>
+                {submitting ? 'Updating...' : 'Update Password'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Create / Edit Listing Modal ── */}
+      {(activeModal === 'create' || activeModal === 'edit') && (
+        <Modal
+          title={activeModal === 'edit' ? 'Edit Listing' : 'New Listing'}
+          onClose={closeModal}
+          maxWidth="600px"
+        >
+          {formError && <div className="form-error">{formError}</div>}
+          <form onSubmit={handlePropertySubmit}>
+            <div className="form-group">
+              <label htmlFor="prop-title">Title *</label>
+              <input id="prop-title" className="form-control" placeholder="e.g. Modern 2-bed in Victoria Island"
+                value={propertyForm.title} onChange={setProp('title')} required />
+            </div>
+            <div className="form-group">
+              <label htmlFor="prop-desc">Description *</label>
+              <textarea id="prop-desc" className="form-control" rows={3}
+                value={propertyForm.description} onChange={setProp('description')} required />
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="prop-price">Price ($) *</label>
+                <input id="prop-price" type="number" className="form-control" min="1"
+                  value={propertyForm.price} onChange={setProp('price')} required />
+              </div>
+              <div className="form-group">
+                <label htmlFor="prop-bedrooms">Bedrooms</label>
+                <input id="prop-bedrooms" type="number" className="form-control" min="0"
+                  value={propertyForm.bedrooms} onChange={setProp('bedrooms')} />
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="prop-type">Property Type *</label>
+                <select id="prop-type" className="form-control" value={propertyForm.propertyType} onChange={setProp('propertyType')}>
+                  <option>Apartment</option>
+                  <option>House</option>
+                  <option>Studio</option>
+                </select>
+              </div>
+              <div className="form-group">
+                <label htmlFor="prop-status">Listing Status *</label>
+                <select id="prop-status" className="form-control" value={propertyForm.listingStatus} onChange={setProp('listingStatus')}>
+                  <option value="Sale">For Sale</option>
+                  <option value="Rent">For Rent</option>
+                </select>
+              </div>
+            </div>
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="prop-city">City *</label>
+                <input id="prop-city" className="form-control" value={propertyForm.city} onChange={setProp('city')} required />
+              </div>
+              <div className="form-group">
+                <label htmlFor="prop-country">Country *</label>
+                <input id="prop-country" className="form-control" value={propertyForm.country} onChange={setProp('country')} required />
+              </div>
+            </div>
+            <div className="form-group">
+              <label htmlFor="prop-images">Image URLs <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(comma-separated)</span></label>
+              <input id="prop-images" className="form-control" placeholder="https://img1.com, https://img2.com"
+                value={propertyForm.imageUrls} onChange={setProp('imageUrls')} />
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-outline" onClick={closeModal} style={{ flex: 1 }}>Cancel</button>
+              <button id="btn-submit-listing" type="submit" className="btn btn-primary" disabled={submitting} style={{ flex: 1 }}>
+                {submitting ? 'Saving...' : activeModal === 'edit' ? 'Save Changes' : 'Post Listing'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );

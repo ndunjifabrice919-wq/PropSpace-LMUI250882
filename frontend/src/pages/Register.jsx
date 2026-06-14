@@ -1,45 +1,145 @@
 import { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
 
 export default function Register() {
-  const { login } = useContext(AuthContext);
+  const { register } = useContext(AuthContext);
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({ username: '', email: '', password: '' });
+
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const set = (field) => (e) => setFormData({ ...formData, [field]: e.target.value });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
+
+    const { username, email, password, confirmPassword } = formData;
+
+    // Client-side validation
+    if (!username || !email || !password || !confirmPassword) {
+      setError('All fields are required.');
+      return;
+    }
+    if (username.length < 3) {
+      setError('Username must be at least 3 characters long.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/auth/register', formData);
-      await login(formData.email, formData.password);
+      await register(username, email, password);
       navigate('/dashboard');
     } catch (err) {
-      alert(err.response?.data?.error || 'Registration failed');
+      setError(err.response?.data?.message || 'Registration failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <div className="container">
       <div className="form-card">
-        <h2 className="text-center mb-4">Create an Account</h2>
-        <form onSubmit={handleSubmit}>
+        <h1 className="form-card-title">Create account</h1>
+        <p className="form-card-subtitle">Join PropSpace and start listing today</p>
+
+        {error && (
+          <div className="form-error" role="alert">{error}</div>
+        )}
+
+        <form onSubmit={handleSubmit} noValidate>
           <div className="form-group">
-            <label>Username</label>
-            <input className="form-control" type="text" value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} required />
+            <label htmlFor="reg-username">Username</label>
+            <input
+              id="reg-username"
+              className="form-control"
+              type="text"
+              autoComplete="username"
+              placeholder="e.g. johndoe"
+              value={formData.username}
+              onChange={set('username')}
+              required
+              minLength={3}
+            />
           </div>
+
           <div className="form-group">
-            <label>Email</label>
-            <input className="form-control" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} required />
+            <label htmlFor="reg-email">Email address</label>
+            <input
+              id="reg-email"
+              className="form-control"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={formData.email}
+              onChange={set('email')}
+              required
+            />
           </div>
-          <div className="form-group">
-            <label>Password</label>
-            <input className="form-control" type="password" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required />
+
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="reg-password">Password</label>
+              <input
+                id="reg-password"
+                className="form-control"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Min. 6 characters"
+                value={formData.password}
+                onChange={set('password')}
+                required
+                minLength={6}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="reg-confirm">Confirm Password</label>
+              <input
+                id="reg-confirm"
+                className="form-control"
+                type="password"
+                autoComplete="new-password"
+                placeholder="Repeat password"
+                value={formData.confirmPassword}
+                onChange={set('confirmPassword')}
+                required
+              />
+            </div>
           </div>
-          <button type="submit" className="btn btn-primary" style={{width: '100%', marginTop: '1rem'}}>Sign Up</button>
+
+          <button
+            id="btn-register-submit"
+            type="submit"
+            className="btn btn-primary btn-full mt-2"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <span className="spinner spinner-sm" style={{ borderTopColor: 'white' }} />
+                Creating account...
+              </>
+            ) : 'Create Account'}
+          </button>
         </form>
-        <p className="text-center mt-4" style={{color: 'var(--text-muted)'}}>
-          Already have an account? <Link to="/login">Log in here</Link>
+
+        <p className="text-center mt-3" style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+          Already have an account?{' '}
+          <Link to="/login" id="link-to-login">Sign in here</Link>
         </p>
       </div>
     </div>

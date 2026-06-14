@@ -1,50 +1,92 @@
-# PropSpace (Property Listing App)
+# PropSpace 🏡
 
-## Overview
-PropSpace is a real-time web application where users can list, view, update, and delete properties for rent or sale.
+A full-stack real-time property listing web application where users can discover, list, update, and remove properties for rent or sale.
 
 ## Tech Stack
-- Frontend: React (Vite)
-- Backend: Node.js, Express
-- Database: MongoDB
 
-## Setup Instructions
+| Layer | Technology |
+|---|---|
+| Frontend | React 18 + Vite |
+| Styling | Vanilla CSS (custom design system) |
+| Backend | Node.js + Express 5 |
+| Database | MongoDB Atlas (via Mongoose) |
+| Auth | JWT (JSON Web Tokens) + bcrypt |
 
-### Backend
-1. Navigate to the `backend` directory:
-   ```bash
-   cd backend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the backend server:
-   ```bash
-   node server.js
-   ```
+## Features
 
-### Frontend
-1. Navigate to the `frontend` directory:
-   ```bash
-   cd frontend
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
+### Public
+- 🔍 Browse all property listings (no login required)
+- 🏙️ Filter by city, price range, property type, and listing status (Rent/Sale)
+- 📋 View full property details including owner contact info
 
-## Submission instructions
-1. Initialize a git repository:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   ```
-2. Create a new public GitHub repository.
-3. Push this local repository to GitHub.
-4. Submit the GitHub URL via the provided Google Form.
+### Authenticated Users
+- 🔐 Register & login with hashed passwords (bcrypt, salt rounds: 12)
+- 📊 Personal dashboard showing your listings
+- ➕ Create new listings (title, description, price, bedrooms, city, country, type, status, images)
+- ✏️ Edit your own listings
+- 🗑️ Delete your own listings
+- 👤 Update your profile (display name, phone, avatar, bio)
+- 🔒 Change password (with current password verification)
+
+## Architecture
+
+```
+backend/
+  controllers/        ← Business logic layer
+  repositories/       ← Data access layer (DB queries)
+  middleware/         ← Auth guard + global error handler
+  models/             ← Mongoose schemas
+  routes/             ← Thin RESTful routers
+  server.js
+frontend/
+  src/
+    components/       ← Reusable UI components
+    context/          ← Global auth state (React Context)
+    pages/            ← Route-level page components
+```
+
+## Getting Started
+
+### Prerequisites
+- Node.js v18+
+- MongoDB Atlas account (free tier works)
+
+### Backend Setup
+
+```bash
+cd backend
+npm install
+cp .env.example .env
+# Edit .env with your MONGO_URI and JWT_SECRET
+npm start
+```
+
+### Frontend Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The app will be available at `http://localhost:5173`.
+
+## API Reference
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/api/auth/register` | No | Register a new user |
+| POST | `/api/auth/login` | No | Login and receive JWT |
+| GET | `/api/properties` | No | List all properties (with filters) |
+| GET | `/api/properties/:id` | No | Get single property |
+| GET | `/api/properties/my-listings` | Yes | Get current user's listings |
+| POST | `/api/properties` | Yes | Create a listing |
+| PUT | `/api/properties/:id` | Yes (owner) | Update a listing |
+| DELETE | `/api/properties/:id` | Yes (owner) | Delete a listing |
+| GET | `/api/users/profile` | Yes | Get user profile |
+| PUT | `/api/users/profile` | Yes | Update profile |
+| PUT | `/api/users/security` | Yes | Change password |
+
+## Environment Variables
+
+See `backend/.env.example` for required variables.
