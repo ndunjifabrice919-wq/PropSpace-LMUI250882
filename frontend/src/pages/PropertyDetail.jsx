@@ -105,7 +105,7 @@ export default function PropertyDetail() {
           </p>
 
           <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary)', marginBottom: '1.5rem' }}>
-            ${property.price.toLocaleString()}
+            {property.price.toLocaleString()} CFA
             {property.listingStatus === 'Rent' && (
               <span style={{ fontSize: '1rem', fontWeight: 400, color: 'var(--text-muted)' }}>/month</span>
             )}

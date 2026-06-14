@@ -32,7 +32,7 @@ export default function PropertyCard({ property: p, actions }) {
       {/* Content */}
       <div className="property-content">
         <div className="property-price">
-          ${p.price.toLocaleString()}
+          {p.price.toLocaleString()} CFA
           {p.listingStatus === 'Rent' && (
             <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--text-muted)' }}>/mo</span>
           )}

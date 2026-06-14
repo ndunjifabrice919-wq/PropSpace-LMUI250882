@@ -381,7 +381,7 @@ export default function Dashboard() {
             </div>
             <div className="form-row">
               <div className="form-group">
-                <label htmlFor="prop-price">Price ($) *</label>
+                <label htmlFor="prop-price">Price (CFA) *</label>
                 <input id="prop-price" type="number" className="form-control" min="1"
                   value={propertyForm.price} onChange={setProp('price')} required />
               </div>

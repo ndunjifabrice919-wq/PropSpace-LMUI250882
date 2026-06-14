@@ -19,7 +19,7 @@ export default function FilterSidebar({ filters, onChange, onReset }) {
           id="filter-city"
           className="form-control"
           type="text"
-          placeholder="e.g. Lagos, London..."
+          placeholder="e.g. Douala, Yaounde..."
           value={filters.city}
           onChange={handle('city')}
         />
@@ -27,7 +27,7 @@ export default function FilterSidebar({ filters, onChange, onReset }) {
 
       {/* Min Price */}
       <div className="filter-group">
-        <label htmlFor="filter-min-price">Min Price ($)</label>
+        <label htmlFor="filter-min-price">Min Price (FCFA)</label>
         <input
           id="filter-min-price"
           className="form-control"
@@ -41,7 +41,7 @@ export default function FilterSidebar({ filters, onChange, onReset }) {
 
       {/* Max Price */}
       <div className="filter-group">
-        <label htmlFor="filter-max-price">Max Price ($)</label>
+        <label htmlFor="filter-max-price">Max Price (FCFA)</label>
         <input
           id="filter-max-price"
           className="form-control"
