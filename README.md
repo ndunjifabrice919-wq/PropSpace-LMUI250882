@@ -28,6 +28,14 @@ A full-stack real-time property listing web application where users can discover
 - 👤 Update your profile (display name, phone, avatar, bio)
 - 🔒 Change password (with current password verification)
 
+### 3. SEO & Standards
+- Updated `index.html` with title tags, description, keywords, and Open Graph tags.
+- Fully documented the project structure, features, API routes, and setup instructions in `README.md`.
+
+### 4. Localization for Cameroon
+- Changed all currency symbols and inputs across the app from USD (`$`) to CFA (`CFA` / `FCFA`).
+- Updated the search filter and property input city placeholders to reference Cameroonian cities like **Douala** and **Yaoundé**.
+
 ## Architecture
 
 ```
